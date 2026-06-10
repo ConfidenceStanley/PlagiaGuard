@@ -1,43 +1,48 @@
+# backend/app/core/dependencies.py
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import JWTError
+from bson import ObjectId
 from app.core.security import decode_access_token
 from app.database.connection import get_users_collection
-from bson import ObjectId
 
-# Bearer token scheme
+# Bearer token extractor
 security = HTTPBearer()
 
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """Get the currently logged in user from JWT token"""
-
+) -> dict:
+    """
+    Extract and validate the JWT token from request header.
+    Returns the current user's data from the database.
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired token. Please login again.",
+        detail="Invalid or expired token. Please log in again.",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    # Decode the token
-    token = credentials.credentials
-    payload = decode_access_token(token)
+    try:
+        # Decode the token
+        payload = decode_access_token(credentials.credentials)
+        user_id: str = payload.get("sub")
 
-    if payload is None:
-        raise credentials_exception
+        if user_id is None:
+            raise credentials_exception
 
-    # Get user ID from token
-    user_id: str = payload.get("sub")
-    if user_id is None:
+    except JWTError:
         raise credentials_exception
 
     # Find user in database
-    users_col = get_users_collection()
-    user = users_col.find_one({"_id": ObjectId(user_id)})
+    users_collection = get_users_collection()
+    user = users_collection.find_one({"_id": ObjectId(user_id)})
 
     if user is None:
         raise credentials_exception
 
+    # Check account is active
     if not user.get("is_active", True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -47,31 +52,49 @@ def get_current_user(
     return user
 
 
-def require_student(current_user: dict = Depends(get_current_user)):
-    """Only allow students"""
-    if current_user["role"] not in ["student", "admin"]:
+def require_student(
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    """Only allow students."""
+    if current_user.get("role") != "student":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Student account required."
+            detail="Access restricted to students only."
         )
     return current_user
 
 
-def require_lecturer(current_user: dict = Depends(get_current_user)):
-    """Only allow lecturers"""
-    if current_user["role"] not in ["lecturer", "admin"]:
+def require_lecturer(
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    """Only allow lecturers."""
+    if current_user.get("role") != "lecturer":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Lecturer account required."
+            detail="Access restricted to lecturers only."
         )
     return current_user
 
 
-def require_admin(current_user: dict = Depends(get_current_user)):
-    """Only allow admins"""
-    if current_user["role"] != "admin":
+def require_admin(
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    """Only allow admins."""
+    if current_user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Admin account required."
+            detail="Access restricted to administrators only."
+        )
+    return current_user
+
+
+def require_lecturer_or_admin(
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    """Allow lecturers or admins."""
+    if current_user.get("role") not in ["lecturer", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted to lecturers and administrators."
         )
     return current_user

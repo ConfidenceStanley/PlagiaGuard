@@ -1,235 +1,269 @@
-from fastapi import APIRouter, HTTPException, Depends, status
-from datetime import datetime, timedelta
+# backend/app/routers/auth.py
+
+from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.concurrency import run_in_threadpool   # ← ADD THIS
+from datetime import datetime, timezone
 from bson import ObjectId
-from app.models.user import (
-    RegisterRequest,
-    LoginRequest,
-    UpdateProfileRequest,
-    LoginResponse,
-    RegisterResponse,
-    UserResponse,
-    UserInDB
-)
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.dependencies import get_current_user
 from app.database.connection import get_users_collection, get_notifications_collection
+from app.models.user import UserRegister, UserLogin, UserResponse, Token
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 
-def format_user(user: dict) -> UserResponse:
-    """Convert MongoDB user document to UserResponse"""
-    return UserResponse(
-        id=str(user["_id"]),
-        full_name=user["full_name"],
-        email=user["email"],
-        role=user["role"],
-        student_id=user.get("student_id"),
-        department=user.get("department"),
-        institution=user.get("institution"),
-        is_active=user.get("is_active", True),
-        created_at=user["created_at"]
+# ─────────────────────────────────────────
+# REGISTER
+# ─────────────────────────────────────────
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register(user_data: UserRegister):
+    """Register a new user account."""
+    users_collection = get_users_collection()
+
+    # Check if email already exists
+    existing_user = users_collection.find_one(
+        {"email": user_data.email.lower().strip()}
+    )
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An account with this email already exists."
+        )
+
+    # ── Hash password in threadpool so it doesn't block ──
+    hashed_password = await run_in_threadpool(
+        hash_password, user_data.password
     )
 
+    now = datetime.now(timezone.utc)
 
-@router.post("/register", response_model=RegisterResponse, status_code=201)
-async def register(request: RegisterRequest):
-    """Register a new user account"""
+    new_user = {
+        "full_name": user_data.full_name.strip(),
+        "email": user_data.email.lower().strip(),
+        "password": hashed_password,
+        "role": user_data.role,
+        "student_id": getattr(user_data, "student_id", None),
+        "department": getattr(user_data, "department", None),
+        "institution": getattr(user_data, "institution", None),
+        "is_active": True,
+        "is_verified": False,
+        "profile_image": None,
+        "created_at": now,
+        "last_login": None,
+    }
 
-    try:
-        users_col = get_users_collection()
+    result = users_collection.insert_one(new_user)
+    user_id = str(result.inserted_id)
 
-        # Check if email already exists
-        existing_user = users_col.find_one({"email": request.email.lower()})
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="An account with this email already exists."
-            )
+    # Create welcome notification
+    notifications_collection = get_notifications_collection()
+    notifications_collection.insert_one({
+        "user_id": result.inserted_id,
+        "title": "Welcome to PlagiaGuard! 🎉",
+        "message": f"Hello {user_data.full_name}! Your account has been created successfully.",
+        "type": "success",
+        "is_read": False,
+        "related_doc_id": None,
+        "created_at": now,
+    })
 
-        # Create user document
-        user_data = UserInDB(
-            full_name=request.full_name,
-            email=request.email.lower(),
-            password=hash_password(request.password),
-            role=request.role.value,
-            student_id=request.student_id,
-            department=request.department,
-            institution=request.institution,
-            created_at=datetime.utcnow()
-        )
+    return {
+        "success": True,
+        "message": "Account created successfully. You can now log in.",
+        "user": {
+            "id": user_id,
+            "full_name": user_data.full_name,
+            "email": user_data.email.lower(),
+            "role": user_data.role,
+        }
+    }
 
-        # Insert into database
-        result = users_col.insert_one(user_data.model_dump())
-        new_user = users_col.find_one({"_id": result.inserted_id})
 
-        # Create welcome notification
-        notifications_col = get_notifications_collection()
-        notifications_col.insert_one({
-            "user_id": result.inserted_id,
-            "title": "Welcome to PlagiaGuard! 🎉",
-            "message": f"Hello {request.full_name}! Your account has been created successfully.",
-            "type": "success",
-            "is_read": False,
-            "created_at": datetime.utcnow()
-        })
+# ─────────────────────────────────────────
+# LOGIN
+# ─────────────────────────────────────────
+@router.post("/login")
+async def login(user_data: UserLogin):
+    """Login and receive a JWT access token."""
 
-        return RegisterResponse(
-            success=True,
-            message="Account created successfully! Please login.",
-            user=format_user(new_user)
-        )
+    print(f"🔐 Login attempt for: {user_data.email}")  # Debug log
 
-    except HTTPException:
-        raise
-
-    except Exception as e:
-        print(f"❌ REGISTER ERROR: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Registration failed: {str(e)}"
-        )
-
-@router.post("/login", response_model=LoginResponse)
-async def login(request: LoginRequest):
-    """Login and receive JWT token"""
-
-    users_col = get_users_collection()
+    users_collection = get_users_collection()
 
     # Find user by email
-    user = users_col.find_one({"email": request.email.lower()})
+    user = users_collection.find_one(
+        {"email": user_data.email.lower().strip()}
+    )
+
+    print(f"👤 User found: {user is not None}")  # Debug log
+
+    auth_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid email or password."
+    )
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password."
-        )
+        raise auth_error
 
-    # Verify password
-    if not verify_password(request.password, user["password"]):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password."
-        )
+    # ── Verify password in threadpool so it doesn't block ──
+    print("🔑 Verifying password...")  # Debug log
+
+    password_valid = await run_in_threadpool(
+        verify_password, user_data.password, user["password"]
+    )
+
+    print(f"✅ Password valid: {password_valid}")  # Debug log
+
+    if not password_valid:
+        raise auth_error
 
     # Check account is active
     if not user.get("is_active", True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account has been deactivated. Contact your administrator."
+            detail="Your account has been deactivated. Please contact admin."
         )
-
-    # Generate JWT token
-    access_token = create_access_token(
-        data={"sub": str(user["_id"]), "role": user["role"]}
-    )
 
     # Update last login time
-    users_col.update_one(
+    users_collection.update_one(
         {"_id": user["_id"]},
-        {"$set": {"last_login": datetime.utcnow()}}
+        {"$set": {"last_login": datetime.now(timezone.utc)}}
     )
 
-    return LoginResponse(
-        success=True,
-        access_token=access_token,
-        token_type="bearer",
-        user=format_user(user)
-    )
+    # Create JWT token
+    token = create_access_token(data={
+        "sub": str(user["_id"]),
+        "role": user["role"],
+        "email": user["email"],
+    })
+
+    print(f"🎉 Login successful for: {user['email']}")  # Debug log
+
+    return {
+        "success": True,
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user["_id"]),
+            "full_name": user["full_name"],
+            "email": user["email"],
+            "role": user["role"],
+            "department": user.get("department"),
+            "student_id": user.get("student_id"),
+        }
+    }
 
 
-@router.get("/me", response_model=UserResponse)
-async def get_my_profile(current_user: dict = Depends(get_current_user)):
-    """Get the currently logged in user profile"""
-    return format_user(current_user)
+# ─────────────────────────────────────────
+# GET CURRENT USER
+# ─────────────────────────────────────────
+@router.get("/me")
+async def get_me(current_user: dict = Depends(get_current_user)):
+    """Get the currently logged-in user's profile."""
+    return {
+        "success": True,
+        "user": {
+            "id": str(current_user["_id"]),
+            "full_name": current_user["full_name"],
+            "email": current_user["email"],
+            "role": current_user["role"],
+            "department": current_user.get("department"),
+            "student_id": current_user.get("student_id"),
+            "institution": current_user.get("institution"),
+            "is_active": current_user.get("is_active", True),
+            "is_verified": current_user.get("is_verified", False),
+            "profile_image": current_user.get("profile_image"),
+            "created_at": current_user.get("created_at"),
+            "last_login": current_user.get("last_login"),
+        }
+    }
 
 
-@router.put("/profile", response_model=UserResponse)
+# ─────────────────────────────────────────
+# UPDATE PROFILE
+# ─────────────────────────────────────────
+@router.put("/profile")
 async def update_profile(
-    request: UpdateProfileRequest,
+    update_data: dict,
     current_user: dict = Depends(get_current_user)
 ):
-    """Update user profile information"""
+    """Update the current user's profile information."""
+    users_collection = get_users_collection()
 
-    users_col = get_users_collection()
+    allowed_fields = ["full_name", "department", "institution", "student_id"]
+    updates = {
+        k: v for k, v in update_data.items()
+        if k in allowed_fields and v is not None
+    }
 
-    # Build update data (only update provided fields)
-    update_data = {}
-    if request.full_name:
-        update_data["full_name"] = request.full_name
-    if request.department:
-        update_data["department"] = request.department
-    if request.institution:
-        update_data["institution"] = request.institution
-    if request.student_id:
-        update_data["student_id"] = request.student_id
-
-    if not update_data:
+    if not updates:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No update data provided."
+            detail="No valid fields to update."
         )
 
-    # Update in database
-    users_col.update_one(
+    users_collection.update_one(
         {"_id": current_user["_id"]},
-        {"$set": update_data}
+        {"$set": updates}
     )
 
-    # Return updated user
-    updated_user = users_col.find_one({"_id": current_user["_id"]})
-    return format_user(updated_user)
+    return {
+        "success": True,
+        "message": "Profile updated successfully."
+    }
 
 
+# ─────────────────────────────────────────
+# GET NOTIFICATIONS
+# ─────────────────────────────────────────
 @router.get("/notifications")
-async def get_notifications(current_user: dict = Depends(get_current_user)):
-    """Get user notifications"""
-
-    notifications_col = get_notifications_collection()
+async def get_notifications(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all notifications for the current user."""
+    notifications_collection = get_notifications_collection()
 
     notifications = list(
-        notifications_col.find(
+        notifications_collection.find(
             {"user_id": current_user["_id"]}
         ).sort("created_at", -1).limit(20)
     )
 
-    # Format notifications
-    formatted = []
     for notif in notifications:
-        formatted.append({
-            "id": str(notif["_id"]),
-            "title": notif["title"],
-            "message": notif["message"],
-            "type": notif["type"],
-            "is_read": notif["is_read"],
-            "created_at": notif["created_at"].isoformat()
-        })
+        notif["id"] = str(notif["_id"])
+        del notif["_id"]
+        notif["user_id"] = str(notif["user_id"])
+        if notif.get("related_doc_id"):
+            notif["related_doc_id"] = str(notif["related_doc_id"])
 
-    # Count unread
-    unread_count = notifications_col.count_documents({
+    unread_count = notifications_collection.count_documents({
         "user_id": current_user["_id"],
         "is_read": False
     })
 
     return {
         "success": True,
-        "notifications": formatted,
+        "notifications": notifications,
         "unread_count": unread_count
     }
 
 
+# ─────────────────────────────────────────
+# MARK NOTIFICATIONS READ
+# ─────────────────────────────────────────
 @router.put("/notifications/read-all")
 async def mark_all_notifications_read(
     current_user: dict = Depends(get_current_user)
 ):
-    """Mark all notifications as read"""
+    """Mark all notifications as read."""
+    notifications_collection = get_notifications_collection()
 
-    notifications_col = get_notifications_collection()
-    notifications_col.update_many(
+    notifications_collection.update_many(
         {"user_id": current_user["_id"], "is_read": False},
         {"$set": {"is_read": True}}
     )
 
-    return {"success": True, "message": "All notifications marked as read"}
+    return {
+        "success": True,
+        "message": "All notifications marked as read."
+    }

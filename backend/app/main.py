@@ -1,16 +1,11 @@
+# backend/app/main.py
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.database.connection import connect_to_database, disconnect_from_database
-from app.routers import auth
-
-# ADD THESE TWO LINES TEMPORARILY TO DEBUG
-import os
-from dotenv import load_dotenv
-load_dotenv()
-print("MONGODB_URI loaded:", os.getenv("MONGODB_URI") is not None)
-print("SECRET_KEY loaded:", os.getenv("SECRET_KEY") is not None)
+from app.routers import auth, documents
 
 
 @asynccontextmanager
@@ -30,24 +25,31 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# ── CORS ──────────────────────────────────────────────────────
+# Hardcode during development to rule out parsing issues
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.get_allowed_origins(),
+    allow_origins=[
+        "http://localhost:5173",    # Vite dev server
+        "http://localhost:3000",    # Alternative port
+        "http://127.0.0.1:5173",   # Some systems use 127.0.0.1
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(auth.router)
+app.include_router(documents.router)
 
 
 @app.get("/")
 async def root():
     return {
-        "app": settings.APP_NAME,
+        "message": f"Welcome to {settings.APP_NAME} API",
         "version": settings.APP_VERSION,
-        "status": "running",
-        "message": "PlagiaGuard API is live 🚀"
+        "status": "running"
     }
 
 
