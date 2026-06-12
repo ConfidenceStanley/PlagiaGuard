@@ -1,5 +1,7 @@
+// frontend/src/pages/LoginPage.jsx
+
 import { useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";          // ← Remove Navigate import
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -8,18 +10,19 @@ import {
 } from "lucide-react";
 
 const LoginPage = () => {
-  const { login, isAuthenticated, user } = useAuth();
-  const [formData, setFormData] = useState({ email: "", password: "" });
+  const { login } = useAuth();                    // ← Only destructure login
+  const [formData, setFormData]     = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
+  const [loading, setLoading]       = useState(false);
+  const [errors, setErrors]         = useState({});
 
-  // Redirect if already logged in
-  if (isAuthenticated) {
-    if (user?.role === "admin") return <Navigate to="/admin/dashboard" />;
-    if (user?.role === "lecturer") return <Navigate to="/lecturer/dashboard" />;
-    return <Navigate to="/student/dashboard" />;
-  }
+  // ── REMOVE THIS ENTIRE BLOCK ───────────────────────────
+  // if (isAuthenticated) {
+  //   if (user?.role === "admin") return <Navigate to="/admin/dashboard" />;
+  //   if (user?.role === "lecturer") return <Navigate to="/lecturer/dashboard" />;
+  //   return <Navigate to="/student/dashboard" />;
+  // }
+  // ── The redirect is handled by AuthContext.login() ─────
 
   const validate = () => {
     const newErrors = {};
@@ -48,7 +51,7 @@ const LoginPage = () => {
   return (
     <div className="min-h-screen flex">
 
-      {/* ── LEFT PANEL ─────────────────────────────────────── */}
+      {/* ── LEFT PANEL ───────────────────────────────────── */}
       <motion.div
         initial={{ x: -100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -56,7 +59,6 @@ const LoginPage = () => {
         className="hidden lg:flex lg:w-1/2 gradient-bg-animated flex-col
                    justify-between p-12 relative overflow-hidden"
       >
-        {/* Background decoration */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full
                           bg-blue-400/10 blur-3xl" />
@@ -64,7 +66,6 @@ const LoginPage = () => {
                           bg-violet-400/10 blur-3xl" />
         </div>
 
-        {/* Logo */}
         <Link to="/" className="flex items-center gap-3 relative z-10">
           <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm
                           flex items-center justify-center border border-white/30">
@@ -76,7 +77,6 @@ const LoginPage = () => {
           </div>
         </Link>
 
-        {/* Center content */}
         <div className="relative z-10">
           <motion.h2
             initial={{ opacity: 0, y: 30 }}
@@ -93,11 +93,10 @@ const LoginPage = () => {
             AI-powered plagiarism detection.
           </p>
 
-          {/* Features list */}
           <div className="space-y-4">
             {[
-              { icon: Brain, text: "AI-Powered Paraphrase Detection" },
-              { icon: Zap, text: "Results in Under 60 Seconds" },
+              { icon: Brain,    text: "AI-Powered Paraphrase Detection" },
+              { icon: Zap,      text: "Results in Under 60 Seconds" },
               { icon: BarChart3, text: "Detailed Visual Reports" },
             ].map(({ icon: Icon, text }) => (
               <motion.div
@@ -117,13 +116,12 @@ const LoginPage = () => {
           </div>
         </div>
 
-        {/* Bottom */}
         <p className="text-blue-300/60 text-sm relative z-10">
           © 2025 PlagiaGuard — HND Final Year Project
         </p>
       </motion.div>
 
-      {/* ── RIGHT PANEL (Form) ──────────────────────────────── */}
+      {/* ── RIGHT PANEL (Form) ────────────────────────────── */}
       <motion.div
         initial={{ x: 100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -251,7 +249,7 @@ const LoginPage = () => {
               )}
             </div>
 
-            {/* Submit Button */}
+            {/* Submit */}
             <motion.button
               type="submit"
               disabled={loading}

@@ -1,11 +1,16 @@
 # Python
-backend/venv/
-backend/__pycache__/
-backend/**/__pycache__/
-backend/**/*.pyc
-backend/.env
+backend_python_backup/venv/
+backend_python_backup/__pycache__/
+backend_python_backup/**/__pycache__/
+backend_python_backup/**/*.pyc
+backend_python_backup/.env
+
+
 
 # Node
+backend/node_modules/
+backend/.env
+
 frontend/node_modules/
 frontend/dist/
 frontend/.env

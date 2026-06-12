@@ -1,43 +1,50 @@
-import { createContext, useState, useEffect, useContext } from "react";
+import { createContext, useState, useEffect, useContext, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { authService } from "../services/authService";
+import axios from "axios";
+
+// Create axios instance here directly to avoid any circular import
+const API = axios.create({
+  baseURL: "http://localhost:8000",
+  withCredentials: true,
+  headers: { "Content-Type": "application/json" },
+});
 
 export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
+  const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const navigate              = useNavigate();
+  const hasFetched            = useRef(false);
 
-  // Load user from localStorage on app start
   useEffect(() => {
-    const savedToken = localStorage.getItem("plagiarguard_token");
-    const savedUser = localStorage.getItem("plagiarguard_user");
+    if (hasFetched.current) return;
+    hasFetched.current = true;
 
-    if (savedToken && savedUser) {
-      setToken(savedToken);
-      setUser(JSON.parse(savedUser));
-    }
-    setLoading(false);
+    const checkAuth = async () => {
+      try {
+        const res = await API.get("/api/auth/me");
+        setUser(res.data.user);
+      } catch {
+        // 401 = not logged in = normal
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuth();
   }, []);
 
   const login = async (email, password) => {
     try {
-      const response = await authService.login(email, password);
+      const res      = await API.post("/api/auth/login", { email, password });
+      const userData = res.data.user;
 
-      const { access_token, user: userData } = response;
-
-      // Save to state and localStorage
-      setToken(access_token);
       setUser(userData);
-      localStorage.setItem("plagiarguard_token", access_token);
-      localStorage.setItem("plagiarguard_user", JSON.stringify(userData));
-
       toast.success(`Welcome back, ${userData.full_name}! 👋`);
 
-      // Redirect based on role
       if (userData.role === "admin") {
         navigate("/admin/dashboard");
       } else if (userData.role === "lecturer") {
@@ -47,9 +54,12 @@ export const AuthProvider = ({ children }) => {
       }
 
       return { success: true };
+
     } catch (error) {
       const message =
-        error.response?.data?.detail || "Login failed. Please try again.";
+        error.response?.data?.message ||
+        error.response?.data?.detail  ||
+        "Login failed. Please try again.";
       toast.error(message);
       return { success: false, message };
     }
@@ -57,38 +67,47 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (formData) => {
     try {
-      const response = await authService.register(formData);
-      toast.success("Account created successfully! Please login. 🎉");
+      await API.post("/api/auth/register", formData);
+      toast.success("Account created! Please login. 🎉");
       navigate("/login");
       return { success: true };
+
     } catch (error) {
       const message =
-        error.response?.data?.detail || "Registration failed. Please try again.";
+        error.response?.data?.message ||
+        error.response?.data?.detail  ||
+        "Registration failed. Please try again.";
       toast.error(message);
       return { success: false, message };
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem("plagiarguard_token");
-    localStorage.removeItem("plagiarguard_user");
-    toast.success("Logged out successfully");
-    navigate("/login");
+  const logout = async () => {
+    try {
+      await API.post("/api/auth/logout");
+    } catch {
+      // ignore
+    } finally {
+      setUser(null);
+      toast.success("Logged out successfully");
+      navigate("/login");
+    }
   };
 
-  const value = {
-    user,
-    token,
-    loading,
-    login,
-    register,
-    logout,
-    isAuthenticated: !!token,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        logout,
+        isAuthenticated: !!user,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {
@@ -98,3 +117,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
+export default AuthContext;
