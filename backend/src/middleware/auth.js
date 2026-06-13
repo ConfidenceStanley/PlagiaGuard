@@ -74,7 +74,8 @@ const protect = async (req, res, next) => {
 };
 
 
-// ── Role-Based Access Control ──────────────────────────────
+// ── Role-Based Access Control ──────────────────────────────────────────────────
+
 const requireRole = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
@@ -87,15 +88,21 @@ const requireRole = (...roles) => {
   };
 };
 
+// ── Named convenience middlewares ──────────────────────────────────────────────
 const requireStudent         = requireRole("student");
 const requireLecturer        = requireRole("lecturer");
 const requireAdmin           = requireRole("admin");
 const requireLecturerOrAdmin = requireRole("lecturer", "admin");
 
+// ── Alias: "restrictTo" used in document.routes.js ────────────────────────────
+// Same function, different name — both work identically
+const restrictTo = requireRole;
+
 
 module.exports = {
   protect,
   requireRole,
+  restrictTo,             // ← used in document.routes.js
   requireStudent,
   requireLecturer,
   requireAdmin,
