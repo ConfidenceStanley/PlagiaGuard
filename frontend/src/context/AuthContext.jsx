@@ -1,87 +1,93 @@
-// frontend/src/context/AuthContext.jsx
-// FULL REPLACEMENT
-
 import {
   createContext,
   useContext,
   useState,
   useEffect,
   useCallback,
-  useRef,
 } from "react";
 import api from "../services/api";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
-  // ← Start as TRUE so we show spinner, not redirect
+  const [user, setUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem("user");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [token, setToken] = useState(() => localStorage.getItem("token"));
   const [loading, setLoading] = useState(true);
-  const initialized = useRef(false);
 
-  // ── On mount: rehydrate from localStorage then verify ──
+  // ── Verify token on mount ──
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-
-    const boot = async () => {
+    const verify = async () => {
       const storedToken = localStorage.getItem("token");
-      const storedUser = localStorage.getItem("user");
 
       if (!storedToken) {
         setLoading(false);
         return;
       }
 
-      // Immediately set from storage so UI doesn't flash
       try {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        setToken(storedToken);
-      } catch {}
-
-      // Then verify with server
-      try {
-        const res = await api.get("/api/auth/me", {
-          headers: { Authorization: `Bearer ${storedToken}` },
-        });
+        const res = await api.get("/api/auth/me");
         const freshUser = res.data?.data?.user || res.data?.user;
         if (freshUser) {
           setUser(freshUser);
-          setToken(storedToken);
           localStorage.setItem("user", JSON.stringify(freshUser));
         }
       } catch (err) {
         console.warn("Token verification failed:", err.response?.status);
-        // Only clear if actually unauthorized (not network error)
         if (err.response?.status === 401) {
           localStorage.removeItem("token");
           localStorage.removeItem("user");
           setUser(null);
           setToken(null);
         }
-        // If network error (503, 500) keep the stored session
       } finally {
         setLoading(false);
       }
     };
 
-    boot();
+    verify();
   }, []);
 
+  // ── Login ──
   const login = useCallback(async (email, password) => {
     const res = await api.post("/api/auth/login", { email, password });
+
     const payload = res.data?.data || res.data;
     const { token: newToken, user: newUser } = payload;
 
     localStorage.setItem("token", newToken);
     localStorage.setItem("user", JSON.stringify(newUser));
+
     setToken(newToken);
     setUser(newUser);
+
     return newUser;
   }, []);
 
+  // ── Register ──
+  const register = useCallback(async (formData) => {
+    const res = await api.post("/api/auth/register", formData);
+
+    const payload = res.data?.data || res.data;
+    const { token: newToken, user: newUser } = payload;
+
+    localStorage.setItem("token", newToken);
+    localStorage.setItem("user", JSON.stringify(newUser));
+
+    setToken(newToken);
+    setUser(newUser);
+
+    return newUser;
+  }, []);
+
+  // ── Logout ──
   const logout = useCallback(async () => {
     try {
       await api.post("/api/auth/logout");
@@ -107,7 +113,15 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, isAuthenticated, login, logout, loading }}
+      value={{
+        user,
+        token,
+        isAuthenticated,
+        login,
+        register,
+        logout,
+        loading,
+      }}
     >
       {children}
     </AuthContext.Provider>

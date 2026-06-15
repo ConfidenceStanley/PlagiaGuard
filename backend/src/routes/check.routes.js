@@ -2,7 +2,8 @@
 const express = require("express");
 const router = express.Router();
 
-const { protect } = require("../middleware/auth");
+// ✅ CORRECT path — matches your actual file location
+const { protect, restrictTo } = require("../middleware/auth");
 const {
   runCheck,
   getLatestCheck,
@@ -11,20 +12,22 @@ const {
   deleteCheck,
 } = require("../controllers/check.controller");
 
-// All routes require auth
+// ── All routes require authentication ──
 router.use(protect);
 
-// My check history
-router.get("/", getMyChecks);
-
-// Latest check for a specific document
-router.get("/document/:documentId", getLatestCheck);
-
-// Run a new check
+// ── Run a new check ──
 router.post("/:documentId", runCheck);
 
-// Get/Delete specific check
+// ── Get check history for current user ──
+router.get("/", getMyChecks);
+
+// ── Get latest check for a document ──
+router.get("/document/:documentId", getLatestCheck);
+
+// ── Get single check by ID ──
 router.get("/:checkId", getCheckById);
-router.delete("/:checkId", deleteCheck);
+
+// ── Delete a check ──
+router.delete("/:checkId", restrictTo("admin"), deleteCheck);
 
 module.exports = router;

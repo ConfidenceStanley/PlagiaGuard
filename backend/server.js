@@ -5,6 +5,7 @@ const cors         = require("cors");
 const dotenv       = require("dotenv");
 const cookieParser = require("cookie-parser");
 const connectDB    = require("./src/config/db");
+const lecturerRoutes = require("./src/routes/lecturer.routes");
 
 dotenv.config();
 connectDB();
@@ -37,7 +38,9 @@ app.use(
 // ── Routes ─────────────────────────────────────────────────────────────────
 app.use("/api/auth",      require("./src/routes/auth.routes"));
 app.use("/api/documents", require("./src/routes/document.routes"));
-app.use("/api/checks",    require("./src/routes/check.routes")); 
+app.use("/api/checks",    require("./src/routes/check.routes"));
+app.use("/api/lecturer", lecturerRoutes); 
+app.use("/api/admin", require("./src/routes/admin.routes"));
 
 // ── Health Check ───────────────────────────────────────────────────────────
 app.get("/", (req, res) => {

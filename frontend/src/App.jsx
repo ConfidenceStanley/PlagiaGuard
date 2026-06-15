@@ -14,9 +14,14 @@ import RegisterPage from "./pages/RegisterPage";
 import StudentDashboard from "./pages/student/Dashboard";
 import StudentDocuments from "./pages/student/Documents";
 
-// Lecturer / Admin (placeholders)
+// Lecturer pages
 import LecturerDashboard from "./pages/lecturer/Dashboard";
+import LecturerSubmissions from "./pages/lecturer/SubmissionsPage";
+
+// Admin pages
 import AdminDashboard from "./pages/admin/Dashboard";
+import AdminUsersPage from "./pages/admin/UsersPage";
+import AdminDocumentsPage from "./pages/admin/DocumentsPage"; // ← we'll create this next
 
 function App() {
   return (
@@ -41,7 +46,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
 
-          {/* ── Student (with sidebar layout) ── */}
+          {/* ── Student ── */}
           <Route
             path="/student"
             element={
@@ -59,13 +64,15 @@ function App() {
           <Route
             path="/lecturer"
             element={
-              <ProtectedRoute allowedRoles={["lecturer"]}>
+              <ProtectedRoute allowedRoles={["lecturer", "admin"]}>
                 <DashboardLayout />
               </ProtectedRoute>
             }
           >
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<LecturerDashboard />} />
+            <Route path="submissions" element={<LecturerSubmissions />} />
+            <Route path="documents" element={<StudentDocuments />} /> 
           </Route>
 
           {/* ── Admin ── */}
@@ -79,6 +86,9 @@ function App() {
           >
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="users" element={<AdminUsersPage />} />         
+            <Route path="documents" element={<AdminDocumentsPage />} />
+            <Route path="my-documents" element={<StudentDocuments />} />  
           </Route>
 
           {/* ── Catch-all ── */}

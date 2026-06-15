@@ -73,14 +73,32 @@ const RegisterPage = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-    setLoading(true);
+// Find this in RegisterPage.jsx:
+
+// Replace with:
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (!validate()) return;
+  setLoading(true);
+  try {
     const { confirmPassword, ...submitData } = formData;
-    await register(submitData);
+    const newUser = await register(submitData);
+
+    // Redirect based on role
+    if (newUser.role === "admin") {
+      window.location.replace("/admin/dashboard");
+    } else if (newUser.role === "lecturer") {
+      window.location.replace("/lecturer/dashboard");
+    } else {
+      window.location.replace("/student/dashboard");
+    }
+  } catch (err) {
+    console.error("Register failed:", err);
+    toast.error(err.response?.data?.message || "Registration failed");
+  } finally {
     setLoading(false);
-  };
+  }
+};
 
   const handleChange = (e) => {
     const { name, value } = e.target;

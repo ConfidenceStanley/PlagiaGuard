@@ -19,18 +19,26 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ── Handle expired tokens ──
+// ── Handle expired tokens (smarter version) ──
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    if (
-      error.response?.status === 401 &&
-      !window.location.pathname.includes("/login")
-    ) {
+    const status = error.response?.status;
+    const url = error.config?.url || "";
+
+    // Don't auto-redirect for these cases:
+    //  - login attempts (let LoginPage handle wrong password)
+    //  - /me check (let AuthContext decide what to do)
+    //  - already on login page
+    const isAuthCheck = url.includes("/auth/me") || url.includes("/auth/login");
+    const onLoginPage = window.location.pathname.includes("/login");
+
+    if (status === 401 && !isAuthCheck && !onLoginPage) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       window.location.href = "/login";
     }
+
     return Promise.reject(error);
   }
 );

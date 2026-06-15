@@ -1,7 +1,7 @@
 // frontend/src/pages/LoginPage.jsx
 
 import { useState } from "react";
-import { Link } from "react-router-dom";          // ← Remove Navigate import
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -10,20 +10,24 @@ import {
 } from "lucide-react";
 
 const LoginPage = () => {
-  const { login } = useAuth();                    // ← Only destructure login
-  const [formData, setFormData]     = useState({ email: "", password: "" });
+  // ── Auth hook (ONCE — not twice!) ─────────────────────
+  const { user, isAuthenticated, login } = useAuth();
+  const navigate = useNavigate();
+
+  // ── Local state ──────────────────────────────────────
+  const [formData, setFormData] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading]       = useState(false);
-  const [errors, setErrors]         = useState({});
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
 
-  // ── REMOVE THIS ENTIRE BLOCK ───────────────────────────
-  // if (isAuthenticated) {
-  //   if (user?.role === "admin") return <Navigate to="/admin/dashboard" />;
-  //   if (user?.role === "lecturer") return <Navigate to="/lecturer/dashboard" />;
-  //   return <Navigate to="/student/dashboard" />;
-  // }
-  // ── The redirect is handled by AuthContext.login() ─────
+  // ── If already logged in, redirect away ──────────────
+  if (isAuthenticated) {
+    if (user?.role === "admin") return <Navigate to="/admin/dashboard" replace />;
+    if (user?.role === "lecturer") return <Navigate to="/lecturer/dashboard" replace />;
+    return <Navigate to="/student/dashboard" replace />;
+  }
 
+  // ── Form validation ──────────────────────────────────
   const validate = () => {
     const newErrors = {};
     if (!formData.email) newErrors.email = "Email is required";
@@ -34,14 +38,38 @@ const LoginPage = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-    setLoading(true);
-    await login(formData.email, formData.password);
-    setLoading(false);
-  };
+  // ── Submit handler with proper error handling ────────
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (!validate()) return;
+  setLoading(true);
 
+  try {
+    const loggedInUser = await login(formData.email, formData.password);
+
+    // Determine target path based on role
+    const path =
+      loggedInUser?.role === "admin"
+        ? "/admin/dashboard"
+        : loggedInUser?.role === "lecturer"
+        ? "/lecturer/dashboard"
+        : "/student/dashboard";
+
+    // ── FORCE FULL PAGE RELOAD ──
+    // This guarantees AuthContext re-initializes with the new token
+    window.location.replace(path);
+  } catch (err) {
+    console.error("Login failed:", err);
+    const message =
+      err.response?.data?.message ||
+      err.response?.data?.error ||
+      "Invalid email or password";
+    setErrors({ password: message });
+    setLoading(false);
+  }
+};
+
+  // ── Input change handler ─────────────────────────────
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -50,8 +78,7 @@ const LoginPage = () => {
 
   return (
     <div className="min-h-screen flex">
-
-      {/* ── LEFT PANEL ───────────────────────────────────── */}
+      {/* ── LEFT PANEL ─────────────────────────────────── */}
       <motion.div
         initial={{ x: -100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -60,15 +87,12 @@ const LoginPage = () => {
                    justify-between p-12 relative overflow-hidden"
       >
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full
-                          bg-blue-400/10 blur-3xl" />
-          <div className="absolute -bottom-20 -left-20 w-64 h-64 rounded-full
-                          bg-violet-400/10 blur-3xl" />
+          <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-blue-400/10 blur-3xl" />
+          <div className="absolute -bottom-20 -left-20 w-64 h-64 rounded-full bg-violet-400/10 blur-3xl" />
         </div>
 
         <Link to="/" className="flex items-center gap-3 relative z-10">
-          <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm
-                          flex items-center justify-center border border-white/30">
+          <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
             <ShieldCheck size={24} className="text-white" />
           </div>
           <div>
@@ -89,14 +113,13 @@ const LoginPage = () => {
             <span className="block">Integrity</span>
           </motion.h2>
           <p className="text-blue-200 text-lg leading-relaxed mb-12 max-w-sm">
-            Welcome back! Continue protecting academic integrity with
-            AI-powered plagiarism detection.
+            Welcome back! Continue protecting academic integrity with AI-powered plagiarism detection.
           </p>
 
           <div className="space-y-4">
             {[
-              { icon: Brain,    text: "AI-Powered Paraphrase Detection" },
-              { icon: Zap,      text: "Results in Under 60 Seconds" },
+              { icon: Brain, text: "AI-Powered Paraphrase Detection" },
+              { icon: Zap, text: "Results in Under 60 Seconds" },
               { icon: BarChart3, text: "Detailed Visual Reports" },
             ].map(({ icon: Icon, text }) => (
               <motion.div
@@ -106,8 +129,7 @@ const LoginPage = () => {
                 transition={{ delay: 0.6 }}
                 className="flex items-center gap-3 text-blue-100"
               >
-                <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center
-                                justify-center border border-white/20">
+                <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center border border-white/20">
                   <Icon size={16} className="text-blue-300" />
                 </div>
                 <span className="text-sm font-medium">{text}</span>
@@ -121,7 +143,7 @@ const LoginPage = () => {
         </p>
       </motion.div>
 
-      {/* ── RIGHT PANEL (Form) ────────────────────────────── */}
+      {/* ── RIGHT PANEL (Form) ────────────────────────── */}
       <motion.div
         initial={{ x: 100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -129,14 +151,9 @@ const LoginPage = () => {
         className="flex-1 flex items-center justify-center p-8 bg-slate-50"
       >
         <div className="w-full max-w-md">
-
           {/* Mobile Logo */}
-          <Link
-            to="/"
-            className="lg:hidden flex items-center gap-2 justify-center mb-8"
-          >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500
-                            to-violet-600 flex items-center justify-center">
+          <Link to="/" className="lg:hidden flex items-center gap-2 justify-center mb-8">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center">
               <ShieldCheck size={20} className="text-white" />
             </div>
             <span className="text-xl font-black text-slate-800">
@@ -154,9 +171,7 @@ const LoginPage = () => {
             <h1 className="text-3xl font-black text-slate-800 mb-2">
               Welcome back 👋
             </h1>
-            <p className="text-slate-500">
-              Sign in to your PlagiaGuard account
-            </p>
+            <p className="text-slate-500">Sign in to your PlagiaGuard account</p>
           </motion.div>
 
           {/* Form */}
@@ -173,10 +188,7 @@ const LoginPage = () => {
                 Email Address
               </label>
               <div className="relative">
-                <Mail
-                  size={18}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                />
+                <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="email"
                   name="email"
@@ -210,10 +222,7 @@ const LoginPage = () => {
                 Password
               </label>
               <div className="relative">
-                <Lock
-                  size={18}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                />
+                <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type={showPassword ? "text" : "password"}
                   name="password"
@@ -232,8 +241,7 @@ const LoginPage = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2
-                             text-slate-400 hover:text-slate-600 transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -264,8 +272,7 @@ const LoginPage = () => {
             >
               {loading ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white
-                                  rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Signing in...
                 </>
               ) : (

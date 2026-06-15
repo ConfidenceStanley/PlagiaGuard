@@ -82,6 +82,7 @@ userSchema.methods.toPublicJSON = function () {
     created_at: this.created_at,
     last_login: this.last_login,
   };
+  { timestamps: true } 
 };
 
 module.exports = mongoose.model("User", userSchema);
